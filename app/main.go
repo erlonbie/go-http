@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -38,16 +39,41 @@ func main() {
 		os.Exit(0)
 	}()
 
-	conn, err := l.Accept()
-	defer conn.Close()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+		go handleConnection(conn)
 	}
-	handleConnection(conn)
 }
-
 func handleConnection(conn net.Conn) {
-	response := "HTTP/1.1 200 OK\r\n\r\n"
-	conn.Write([]byte(response))
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		fmt.Println("Error reading:", err)
+		return
+	}
+
+	input := string(buf[:n])
+
+	lines := strings.Split(input, "\r\n")
+	if len(lines) == 0 {
+		return
+	}
+
+	reqParts := strings.Split(lines[0], " ")
+	if len(reqParts) < 2 {
+		return
+	}
+	path := reqParts[1]
+
+	if path == "/" {
+		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+	} else {
+		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+	}
 }
