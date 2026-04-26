@@ -74,6 +74,19 @@ func handleConnection(conn net.Conn) {
 	if len(reqParts) < 2 {
 		return
 	}
+
+	headers := make(map[string]string)
+	for i := 1; i < len(lines); i++ {
+		if lines[i] == "" {
+			break
+		}
+		parts := strings.SplitN(lines[i], ":", 2)
+		if len(parts) == 2 {
+			key := strings.ToLower(strings.TrimSpace(parts[0]))
+			value := strings.TrimSpace(parts[1])
+			headers[key] = value
+		}
+	}
 	path := reqParts[1]
 
 	path = strings.Trim(path, "/")
@@ -98,6 +111,12 @@ func handleConnection(conn net.Conn) {
 				fmt.Println("Error writing response:", err)
 			}
 		}
+	case "user-agent":
+		response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(headers["user-agent"]), headers["user-agent"])
+		if _, err := conn.Write([]byte(response)); err != nil {
+			fmt.Println("Error writing response:", err)
+		}
+
 	default:
 		if _, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n")); err != nil {
 			fmt.Println("Error writing response:", err)
