@@ -48,8 +48,13 @@ func main() {
 		go handleConnection(conn)
 	}
 }
+
 func handleConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Println("Error closing connection:", err)
+		}
+	}()
 
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
@@ -71,9 +76,31 @@ func handleConnection(conn net.Conn) {
 	}
 	path := reqParts[1]
 
-	if path == "/" {
-		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-	} else {
-		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+	path = strings.Trim(path, "/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) == 0 || parts[0] == "" {
+		if _, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n")); err != nil {
+			fmt.Println("Error writing response:", err)
+		}
+		return
+	}
+
+	switch parts[0] {
+	case "echo":
+		if len(parts) > 1 {
+			response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(parts[1]), parts[1])
+			if _, err := conn.Write([]byte(response)); err != nil {
+				fmt.Println("Error writing response:", err)
+			}
+		} else {
+			if _, err := conn.Write([]byte("HTTP/1.1 400 Bad Request\r\n\r\n")); err != nil {
+				fmt.Println("Error writing response:", err)
+			}
+		}
+	default:
+		if _, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n")); err != nil {
+			fmt.Println("Error writing response:", err)
+		}
 	}
 }
