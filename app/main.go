@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -45,11 +46,11 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go handleConnection(conn)
+		go handleConnection(conn, os.Args)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, args []string) {
 	defer func() {
 		if err := conn.Close(); err != nil {
 			fmt.Println("Error closing connection:", err)
@@ -116,7 +117,43 @@ func handleConnection(conn net.Conn) {
 		if _, err := conn.Write([]byte(response)); err != nil {
 			fmt.Println("Error writing response:", err)
 		}
+	case "files":
+		if len(args) < 3 {
+			fmt.Fprintf(os.Stderr, "usage: your_program --directory path/to/directory\n")
+			os.Exit(1)
+		}
 
+		if args[1] == "--directory" {
+
+			fullPath := filepath.Join(args[2], parts[1])
+
+			if _, err := os.Stat(fullPath); err != nil {
+				if _, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n")); err != nil {
+					fmt.Println("Error writing response:", err)
+				}
+				return
+			}
+
+			file, err := os.Open(fullPath)
+			if err != nil {
+				fmt.Println("Error opening fil: %w", err)
+			}
+			defer func() {
+				if err := file.Close(); err != nil {
+					fmt.Println("Error closing file:", err)
+				}
+			}()
+
+			content, _ := os.ReadFile(fullPath)
+
+			response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(content), content)
+			if _, err := conn.Write([]byte(response)); err != nil {
+				fmt.Println("Error writing response:", err)
+			}
+		} else {
+			fmt.Println("missing --directory flag")
+			return
+		}
 	default:
 		if _, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n")); err != nil {
 			fmt.Println("Error writing response:", err)
