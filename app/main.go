@@ -77,8 +77,10 @@ func handleConnection(conn net.Conn, args []string) {
 	}
 
 	headers := make(map[string]string)
+	var body string
 	for i := 1; i < len(lines); i++ {
 		if lines[i] == "" {
+			body = lines[i+1]
 			break
 		}
 		parts := strings.SplitN(lines[i], ":", 2)
@@ -123,32 +125,42 @@ func handleConnection(conn net.Conn, args []string) {
 			os.Exit(1)
 		}
 
+		fullPath := filepath.Join(args[2], parts[1])
 		if args[1] == "--directory" {
+			switch reqParts[0] {
+			case "GET":
+				if _, err := os.Stat(fullPath); err != nil {
+					if _, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n")); err != nil {
+						fmt.Println("Error writing response:", err)
+					}
+					return
+				}
 
-			fullPath := filepath.Join(args[2], parts[1])
+				file, err := os.Open(fullPath)
+				if err != nil {
+					fmt.Println("Error opening fil: %w", err)
+				}
+				defer func() {
+					if err := file.Close(); err != nil {
+						fmt.Println("Error closing file:", err)
+					}
+				}()
 
-			if _, err := os.Stat(fullPath); err != nil {
-				if _, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n")); err != nil {
+				content, _ := os.ReadFile(fullPath)
+
+				response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(content), content)
+				if _, err := conn.Write([]byte(response)); err != nil {
 					fmt.Println("Error writing response:", err)
 				}
-				return
-			}
-
-			file, err := os.Open(fullPath)
-			if err != nil {
-				fmt.Println("Error opening fil: %w", err)
-			}
-			defer func() {
-				if err := file.Close(); err != nil {
-					fmt.Println("Error closing file:", err)
+			default:
+				err := os.WriteFile(fullPath, []byte(body), 0644)
+				if err != nil {
+					fmt.Println("Error writing file:", err)
 				}
-			}()
-
-			content, _ := os.ReadFile(fullPath)
-
-			response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(content), content)
-			if _, err := conn.Write([]byte(response)); err != nil {
-				fmt.Println("Error writing response:", err)
+				response := "HTTP/1.1 201 Created\r\n\r\n"
+				if _, err := conn.Write([]byte(response)); err != nil {
+					fmt.Println("Error writing response:", err)
+				}
 			}
 		} else {
 			fmt.Println("missing --directory flag")
